@@ -9,7 +9,6 @@ for (( i = $START; i <= $END; i*=4 )); do
 
     cp ./template.sh $myfile
     #cat $idir/node${i} >>$myfile
-    echo "done">>$myfile
     # echo "rm -rf /tmp/jsm.$(hostname).4069">>$myfile
     sed -i "s/NNODE/$i/g" $myfile
     chmod a+rwx $myfile

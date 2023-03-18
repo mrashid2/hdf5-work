@@ -12,16 +12,19 @@
 #SBATCH -e o%j.ior_NNODEnode
 
 let NPROC=NNODE
+SDIR=${SCRATCH}
 CDIR=${SCRATCH}/ior_data
 EXEC=${HOME}/benchmarks/ior/src/ior
 
 module unload cpe-cuda/23.02
 module unload cray-hdf5-parallel/1.12.2.3
 module unload darshan/3.4.0-hdf5
+module unload python
 
 module load cpe-cuda/23.02
 module load cray-hdf5-parallel/1.12.2.3
 module load darshan/3.4.0-hdf5
+module load python
 
 #export LD_LIBRARY_PATH=${HOME}/perlmutter/hdf5-1.10.6/build/hdf5/lib:$LD_LIBRARY_PATH
 export MPICH_MPIIO_STATS=1
@@ -41,6 +44,8 @@ sizeg="1"
 unitg="g"
 
 run_cmd="srun -N NNODE -n $NPROC"
+
+timestamp=$(date +%Y-%m-%d_%H-%M-%S)
 
 ior(){
     local i=$1
@@ -92,16 +97,32 @@ ior(){
     rm -rf $CDIR
 
 }
-#for i in $(seq 1 1 5); do
+
+echo "Before Loop"
 for i in 1; do
+    echo "i: $i"
     for api in HDF5; do
-        for aggr in 1; do
-            for unit in k; do
-                ior $i $api $aggr $unit $proc
+        echo "api: $api"
+        for aggr in 24; do
+            echo "aggr: $aggr"
+            for unit in g; do
+                echo "Starting python background process"
+                $timestamp
+                $run_cmd python -u $SDIR/extract_lustre_client_stat.py $SDIR ${i}_${api}_${aggr}${unit} &>> ${i}_${api}_${aggr}${unit}_pylog &
+                pid=$!
+                echo "Started python background process"
+                $timestamp
+                ior $i $api $aggr $unit &
+                echo "Finished IOR execution"
+                $timestamp
+                # Cancel the srun job
+                echo "Cancelling srun job with PID $pid"
+                scancel $pid
             done
-       done
+        done
     done
 echo "Iter $i Done"
+$timestamp
 done
 
 date
