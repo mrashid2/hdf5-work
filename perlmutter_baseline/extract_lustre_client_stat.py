@@ -4,7 +4,6 @@ import csv
 import sys
 import copy
 import time
-import datetime
 import subprocess
 
 stat_name_list = [
@@ -157,72 +156,70 @@ class Client_Snapshot:
 
         return val_list
 
-    def save_osc_rpc_dist_stats_data(self):
-        for osc_name in self.osc_names:
-            # rpc_stats_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/rpc_stats'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
-            rpc_stats_lines = []
-            with open(osc_proc_path + osc_name + '/rpc_stats') as f:
-                rpc_stats_lines = f.readlines()
+    def save_osc_rpc_dist_stats_data(self, osc_name):
+        # rpc_stats_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/rpc_stats'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+        rpc_stats_lines = []
+        with open(osc_proc_path + osc_name + '/rpc_stats') as f:
+            rpc_stats_lines = f.readlines()
 
-            cur_read_rif = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^read RPCs in flight:(\s)+(\d)+', 2)
-            cur_write_rif = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^write RPCs in flight:(\s)+(\d)+', 2)
-            self.osc_snapshots[osc_name].save_cur_rif(cur_read_rif, cur_write_rif)
+        cur_read_rif = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^read RPCs in flight:(\s)+(\d)+', 2)
+        cur_write_rif = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^write RPCs in flight:(\s)+(\d)+', 2)
+        self.osc_snapshots[osc_name].save_cur_rif(cur_read_rif, cur_write_rif)
 
-            pending_read_pages = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^pending read pages:(\s)+(\d)+', 2)
-            pending_write_pages = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^pending write pages:(\s)+(\d)+', 2)
-            self.osc_snapshots[osc_name].save_pending_pages(pending_read_pages, pending_write_pages)
+        pending_read_pages = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^pending read pages:(\s)+(\d)+', 2)
+        pending_write_pages = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^pending write pages:(\s)+(\d)+', 2)
+        self.osc_snapshots[osc_name].save_pending_pages(pending_read_pages, pending_write_pages)
 
-            read_dist, write_dist = self.extract_dicts_from_stat_distribution(rpc_stats_lines, 'pages per rpc')
-            self.osc_snapshots[osc_name].save_ppr_dist(read_dist, write_dist)
+        read_dist, write_dist = self.extract_dicts_from_stat_distribution(rpc_stats_lines, 'pages per rpc')
+        self.osc_snapshots[osc_name].save_ppr_dist(read_dist, write_dist)
 
-            read_dist, write_dist = self.extract_dicts_from_stat_distribution(rpc_stats_lines, 'rpcs in flight')
-            self.osc_snapshots[osc_name].save_rif_dist(read_dist, write_dist)
+        read_dist, write_dist = self.extract_dicts_from_stat_distribution(rpc_stats_lines, 'rpcs in flight')
+        self.osc_snapshots[osc_name].save_rif_dist(read_dist, write_dist)
 
-    def save_osc_import_data(self):
-        for osc_name in self.osc_names:
-            # import_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/import'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
-            import_lines = []
-            with open(osc_proc_path + osc_name + '/import') as f:
-                import_lines = f.readlines()
+    def save_osc_import_data(self, osc_name):
+        # import_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/import'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+        import_lines = []
+        with open(osc_proc_path + osc_name + '/import') as f:
+            import_lines = f.readlines()
 
-            avg_waittime = self.extract_single_stat_data_from_stats(import_lines, '^(\s+)avg_waittime:(\s+)(\d+)(\s+)usec', 3)
+        avg_waittime = self.extract_single_stat_data_from_stats(import_lines, '^(\s+)avg_waittime:(\s+)(\d+)(\s+)usec', 3)
 
-            read_rpc_bw = 0
-            write_rpc_bw = 0
-            val_list = self.extract_mult_stat_float_data_from_stats(import_lines, '^(\s+)MB_per_sec:(\s+)(\d+)\.(\d+)', [3, 4])
+        read_rpc_bw = 0
+        write_rpc_bw = 0
+        val_list = self.extract_mult_stat_float_data_from_stats(import_lines, '^(\s+)MB_per_sec:(\s+)(\d+)\.(\d+)', [3, 4])
 
-            if len(val_list) == 0:
-                print("No BW is reported for OSC: ", osc_name)
-            elif len(val_list) == 1:
-                print("One BW value is available for OSC: ", osc_name)
-                read_rpc_bw = val_list[0]
-            else:
-                read_rpc_bw = val_list[0]
-                write_rpc_bw = val_list[1]
+        if len(val_list) == 0:
+            print("No BW is reported for OSC: ", osc_name)
+        elif len(val_list) == 1:
+            print("One BW value is available for OSC: ", osc_name)
+            read_rpc_bw = val_list[0]
+        else:
+            read_rpc_bw = val_list[0]
+            write_rpc_bw = val_list[1]
 
-            self.osc_snapshots[osc_name].avg_waittime = avg_waittime
-            self.osc_snapshots[osc_name].read_rpc_bw = read_rpc_bw
-            self.osc_snapshots[osc_name].write_rpc_bw = write_rpc_bw
+        self.osc_snapshots[osc_name].avg_waittime = avg_waittime
+        self.osc_snapshots[osc_name].read_rpc_bw = read_rpc_bw
+        self.osc_snapshots[osc_name].write_rpc_bw = write_rpc_bw
 
-    def save_osc_params_data(self):
-        for osc_name in self.osc_names:
-            # cur_dirty_bytes = int(subprocess.run(['cat', osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
-            cur_dirty_bytes = 0
-            with open(osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes') as f:
-                cur_dirty_bytes = int(f.read())
-            self.osc_snapshots[osc_name].cur_dirty_bytes = cur_dirty_bytes
+    def save_osc_params_data(self, osc_name):
+        # cur_dirty_bytes = int(subprocess.run(['cat', osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
+        cur_dirty_bytes = 0
+        with open(osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes') as f:
+            cur_dirty_bytes = int(f.read())
+        self.osc_snapshots[osc_name].cur_dirty_bytes = cur_dirty_bytes
 
-            # cur_grant_bytes = int(subprocess.run(['cat', osc_proc_path + osc_name + '/' + 'cur_grant_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
-            cur_grant_bytes = 0
-            with open(osc_proc_path + osc_name + '/' + 'cur_grant_bytes') as f:
-                cur_grant_bytes = int(f.read())
-            self.osc_snapshots[osc_name].cur_grant_bytes = cur_grant_bytes
+        # cur_grant_bytes = int(subprocess.run(['cat', osc_proc_path + osc_name + '/' + 'cur_grant_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
+        cur_grant_bytes = 0
+        with open(osc_proc_path + osc_name + '/' + 'cur_grant_bytes') as f:
+            cur_grant_bytes = int(f.read())
+        self.osc_snapshots[osc_name].cur_grant_bytes = cur_grant_bytes
 
     def populate_snapshot(self):
-        # Possible improvement by implementing threading here
-        self.save_osc_rpc_dist_stats_data()
-        self.save_osc_import_data()
-        self.save_osc_params_data()
+         # Possible improvement by implementing threading here
+        for osc_name in self.osc_names:
+            self.save_osc_rpc_dist_stats_data(osc_name)
+            self.save_osc_import_data(osc_name)
+            self.save_osc_params_data(osc_name)
 
     def get_avg_cur_dirty_bytes(self):
         total_dirty_bytes = 0
