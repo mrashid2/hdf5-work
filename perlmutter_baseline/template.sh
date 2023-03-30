@@ -1,5 +1,6 @@
 #!/bin/bash -l
 #SBATCH -N NNODE
+#SBATCH -n 6
 #SBATCH -p premium
 # #SBATCH --qos=premium
 # #SBATCH -p debug
@@ -43,7 +44,7 @@ units="k m"
 sizeg="1"
 unitg="g"
 
-run_cmd="srun -N NNODE -n $NPROC"
+run_cmd="srun -N NNODE -n $NPROC --exclusive"
 
 # Define a timestamp function
 timestamp() {
@@ -104,9 +105,9 @@ ior(){
 echo "Before Loop"
 for i in 1; do
     echo "i: $i"
-    for api in HDF5; do
+    for api in POSIX; do
         echo "api: $api"
-        for aggr in 24; do
+        for aggr in 1; do
             echo "aggr: $aggr"
             for unit in g; do
                 echo "Starting python background process"
@@ -115,7 +116,7 @@ for i in 1; do
                 pid=$!
                 echo "Started python background process"
                 timestamp
-                ior $i $api $aggr $unit &
+                ior $i $api $aggr $unit
                 echo "Finished IOR execution"
                 timestamp
                 # Cancel the srun job
