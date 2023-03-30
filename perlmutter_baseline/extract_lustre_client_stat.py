@@ -30,7 +30,7 @@ stat_summary_list = [
 client_page_size_in_bytes = 4096
 megabytes_to_bytes = 1024*1024
 
-snap_record_duration = 5
+snap_record_duration = 1
 
 # Tunable parameters
 mppr_str = 'max_pages_per_rpc'
@@ -159,7 +159,10 @@ class Client_Snapshot:
 
     def save_osc_rpc_dist_stats_data(self):
         for osc_name in self.osc_names:
-            rpc_stats_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/rpc_stats'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+            # rpc_stats_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/rpc_stats'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+            rpc_stats_lines = []
+            with open(osc_proc_path + osc_name + '/rpc_stats') as f:
+                rpc_stats_lines = f.readlines()
 
             cur_read_rif = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^read RPCs in flight:(\s)+(\d)+', 2)
             cur_write_rif = self.extract_single_stat_data_from_stats(rpc_stats_lines, '^write RPCs in flight:(\s)+(\d)+', 2)
@@ -177,7 +180,10 @@ class Client_Snapshot:
 
     def save_osc_import_data(self):
         for osc_name in self.osc_names:
-            import_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/import'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+            # import_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/import'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
+            import_lines = []
+            with open(osc_proc_path + osc_name + '/import') as f:
+                import_lines = f.readlines()
 
             avg_waittime = self.extract_single_stat_data_from_stats(import_lines, '^(\s+)avg_waittime:(\s+)(\d+)(\s+)usec', 3)
 
@@ -200,10 +206,16 @@ class Client_Snapshot:
 
     def save_osc_params_data(self):
         for osc_name in self.osc_names:
-            cur_dirty_bytes = int(subprocess.run(['cat', osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
+            # cur_dirty_bytes = int(subprocess.run(['cat', osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
+            cur_dirty_bytes = 0
+            with open(osc_sys_fs_path + osc_name + '/' + 'cur_dirty_bytes') as f:
+                cur_dirty_bytes = int(f.read())
             self.osc_snapshots[osc_name].cur_dirty_bytes = cur_dirty_bytes
 
-            cur_grant_bytes = int(subprocess.run(['cat', osc_proc_path + osc_name + '/' + 'cur_grant_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
+            # cur_grant_bytes = int(subprocess.run(['cat', osc_proc_path + osc_name + '/' + 'cur_grant_bytes'], stdout=subprocess.PIPE).stdout.decode('utf-8'))
+            cur_grant_bytes = 0
+            with open(osc_proc_path + osc_name + '/' + 'cur_grant_bytes') as f:
+                cur_grant_bytes = int(f.read())
             self.osc_snapshots[osc_name].cur_grant_bytes = cur_grant_bytes
 
     def populate_snapshot(self):
@@ -313,14 +325,10 @@ if __name__ == "__main__":
 
         cur_snap.populate_snapshot()
         begin_time = time.time()
-
-        print('Snapshot Generated: %s' % datetime.datetime.now())
         print('Snapshot Generation Time: ', int((time.time() - end_time) * 1000), ' miliseconds')
-        print('record_dur: ', record_dur)
 
         cur_snap.store_params_to_csv(result_folder_path, wld_name, record_dur, prev_snap)
-
-        print('Tuning + Cleanup Time: ', int((time.time() - end_time) * 1000), ' miliseconds')
-
         prev_snap = copy.deepcopy(cur_snap)
+        print('Processing Time (Before Sleeping): ', int((time.time() - end_time) * 1000), ' miliseconds')
+
         time.sleep(snap_record_duration)
