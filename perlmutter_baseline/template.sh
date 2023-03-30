@@ -45,7 +45,10 @@ unitg="g"
 
 run_cmd="srun -N NNODE -n $NPROC"
 
-timestamp=$(date +%Y-%m-%d_%H-%M-%S)
+# Define a timestamp function
+timestamp() {
+  date +"%Y%m%d_%H%M%S" # current time
+}
 
 ior(){
     local i=$1
@@ -107,14 +110,14 @@ for i in 1; do
             echo "aggr: $aggr"
             for unit in g; do
                 echo "Starting python background process"
-                $timestamp
+                timestamp
                 $run_cmd python -u $SDIR/extract_lustre_client_stat.py $SDIR ${i}_${api}_${aggr}${unit} &>> ${i}_${api}_${aggr}${unit}_pylog &
                 pid=$!
                 echo "Started python background process"
-                $timestamp
+                timestamp
                 ior $i $api $aggr $unit &
                 echo "Finished IOR execution"
-                $timestamp
+                timestamp
                 # Cancel the srun job
                 echo "Cancelling srun job with PID $pid"
                 scancel $pid
@@ -122,7 +125,7 @@ for i in 1; do
         done
     done
 echo "Iter $i Done"
-$timestamp
+timestamp
 done
 
 date
