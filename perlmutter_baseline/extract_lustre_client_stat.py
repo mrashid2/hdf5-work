@@ -29,7 +29,7 @@ stat_summary_list = [
 client_page_size_in_bytes = 4096
 megabytes_to_bytes = 1024*1024
 
-snap_record_duration = 1
+snap_record_duration = 0
 
 # Tunable parameters
 mppr_str = 'max_pages_per_rpc'
@@ -156,6 +156,18 @@ class Client_Snapshot:
 
         return val_list
 
+    def check_avg_type(self, line_list, pattern):
+        for line in line_list:
+            try:
+                attr_match = re.search(pattern, line, re.IGNORECASE)
+                if attr_match:
+                    return True
+
+            except AttributeError:
+                attr_match = re.search(pattern, line, re.IGNORECASE)
+
+        return False
+
     def save_osc_rpc_dist_stats_data(self, osc_name):
         # rpc_stats_lines = subprocess.run(['cat', osc_proc_path + osc_name + '/rpc_stats'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()
         rpc_stats_lines = []
@@ -190,9 +202,17 @@ class Client_Snapshot:
 
         if len(val_list) == 0:
             print("No BW is reported for OSC: ", osc_name)
+            print(import_lines)
         elif len(val_list) == 1:
             print("One BW value is available for OSC: ", osc_name)
-            read_rpc_bw = val_list[0]
+            print(import_lines[-4:])
+
+            if self.check_avg_type(import_lines, '^(\s+)read_data_averages:'):
+                print("BW value type ==> READ")
+                read_rpc_bw = val_list[0]
+            else:
+                print("BW value type ==> READ")
+                write_rpc_bw = val_list[0]
         else:
             read_rpc_bw = val_list[0]
             write_rpc_bw = val_list[1]
@@ -223,7 +243,7 @@ class Client_Snapshot:
 
     def get_avg_cur_dirty_bytes(self, osc_names):
         if len(osc_names) == 0:
-            return 0
+            return [0]
 
         total_dirty_bytes = 0
 
@@ -234,7 +254,7 @@ class Client_Snapshot:
 
     def get_avg_cur_grant_bytes(self, osc_names):
         if len(osc_names) == 0:
-            return 0
+            return [0]
 
         total_grant_bytes = 0
 
@@ -245,7 +265,7 @@ class Client_Snapshot:
 
     def get_avg_waittime(self, osc_names):
         if len(osc_names) == 0:
-            return 0
+            return [0]
 
         total_avg_waittime = 0
 
@@ -256,7 +276,7 @@ class Client_Snapshot:
 
     def get_avg_read_rpc_bw(self, osc_names):
         if len(osc_names) == 0:
-            return 0
+            return [0]
 
         total_avg_read_rpc_bw = 0
 
@@ -267,7 +287,7 @@ class Client_Snapshot:
 
     def get_avg_write_rpc_bw(self, osc_names):
         if len(osc_names) == 0:
-            return 0
+            return [0]
 
         total_avg_write_rpc_bw = 0
 
@@ -319,16 +339,16 @@ class Client_Snapshot:
         return io_active_osc_names
 
     def construct_params_list(self, record_dur, prev_snap):
-        read_active_osc_names = self.get_read_active_osc_names(self, prev_snap)
-        write_active_osc_names = self.get_write_active_osc_names(self, prev_snap)
-        io_active_osc_names = self.get_io_active_osc_names(self, prev_snap)
+        read_active_osc_names = self.get_read_active_osc_names(prev_snap)
+        write_active_osc_names = self.get_write_active_osc_names(prev_snap)
+        io_active_osc_names = self.get_io_active_osc_names(prev_snap)
 
         global obsvn_cnt
 
         params_list = []
         params_list = params_list + [obsvn_cnt]
-        params_list = params_list + self.get_avg_cur_dirty_bytes(write_active_osc_names)
-        params_list = params_list + self.get_avg_cur_grant_bytes(write_active_osc_names)
+        params_list = params_list + self.get_avg_cur_dirty_bytes(io_active_osc_names)
+        params_list = params_list + self.get_avg_cur_grant_bytes(io_active_osc_names)
         params_list = params_list + self.get_avg_waittime(io_active_osc_names)
         params_list = params_list + self.get_avg_read_rpc_bw(read_active_osc_names)
         params_list = params_list + self.get_avg_write_rpc_bw(write_active_osc_names)
@@ -372,7 +392,7 @@ if __name__ == "__main__":
 
     while True:
         end_time = time.time()
-        record_dur = round((end_time - begin_time), 2)
+        record_dur = round((end_time - begin_time), 4)
 
         cur_snap.populate_snapshot()
         begin_time = time.time()
