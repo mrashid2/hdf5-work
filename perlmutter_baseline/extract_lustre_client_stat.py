@@ -221,63 +221,117 @@ class Client_Snapshot:
             self.save_osc_import_data(osc_name)
             self.save_osc_params_data(osc_name)
 
-    def get_avg_cur_dirty_bytes(self):
+    def get_avg_cur_dirty_bytes(self, osc_names):
+        if len(osc_names) == 0:
+            return 0
+
         total_dirty_bytes = 0
-        non_zero_db_cnt = 0
 
-        for osc_name in self.osc_names:
-            osc_cur_dirty_bytes = self.osc_snapshots[osc_name].cur_dirty_bytes
-            total_dirty_bytes += osc_cur_dirty_bytes
+        for osc_name in osc_names:
+            total_dirty_bytes += self.osc_snapshots[osc_name].cur_dirty_bytes
 
-            if osc_cur_dirty_bytes != 0:
-                non_zero_db_cnt += 1
+        return [round((total_dirty_bytes / len(osc_names)), 2)]
 
-        if non_zero_db_cnt == 0:
-            return [0]
-        return [int(total_dirty_bytes / non_zero_db_cnt)]
+    def get_avg_cur_grant_bytes(self, osc_names):
+        if len(osc_names) == 0:
+            return 0
 
-    def get_avg_cur_grant_bytes(self):
         total_grant_bytes = 0
 
-        for osc_name in self.osc_names:
+        for osc_name in osc_names:
             total_grant_bytes += self.osc_snapshots[osc_name].cur_grant_bytes
 
-        return [int(total_grant_bytes / len(self.osc_names))]
+        return [round((total_grant_bytes / len(osc_names)), 2)]
 
-    def get_avg_waittime(self):
+    def get_avg_waittime(self, osc_names):
+        if len(osc_names) == 0:
+            return 0
+
         total_avg_waittime = 0
 
-        for osc_name in self.osc_names:
+        for osc_name in osc_names:
             total_avg_waittime += self.osc_snapshots[osc_name].avg_waittime
 
-        return [int(total_avg_waittime / len(self.osc_names))]
+        return [round((total_avg_waittime / len(osc_names)), 2)]
 
-    def get_avg_read_rpc_bw(self):
+    def get_avg_read_rpc_bw(self, osc_names):
+        if len(osc_names) == 0:
+            return 0
+
         total_avg_read_rpc_bw = 0
 
-        for osc_name in self.osc_names:
+        for osc_name in osc_names:
             total_avg_read_rpc_bw += self.osc_snapshots[osc_name].read_rpc_bw
 
-        return [round((total_avg_read_rpc_bw / len(self.osc_names)), 2)]
+        return [round((total_avg_read_rpc_bw / len(osc_names)), 2)]
 
-    def get_avg_write_rpc_bw(self):
+    def get_avg_write_rpc_bw(self, osc_names):
+        if len(osc_names) == 0:
+            return 0
+
         total_avg_write_rpc_bw = 0
 
-        for osc_name in self.osc_names:
+        for osc_name in osc_names:
             total_avg_write_rpc_bw += self.osc_snapshots[osc_name].write_rpc_bw
 
-        return [round((total_avg_write_rpc_bw / len(self.osc_names)), 2)]
+        return [round((total_avg_write_rpc_bw / len(osc_names)), 2)]
 
-    def construct_params_list(self, record_dur):
+    def is_dist_rpc_count_equals(self, cur_dist, prev_dist):
+        cur_rpc_count = 0
+        prev_rpc_count = 0
+
+        for key in cur_dist:
+            cur_rpc_count += cur_dist[key][0]
+
+        for key in prev_dist:
+            prev_rpc_count += prev_dist[key][0]
+
+        if cur_rpc_count == prev_rpc_count:
+            return True
+
+        return False
+
+    def get_read_active_osc_names(self, prev_snap):
+        read_active_osc_names = []
+
+        for osc_name in self.osc_names:
+            if self.is_dist_rpc_count_equals(self.osc_snapshots[osc_name].read_ppr_dist, prev_snap.osc_snapshots[osc_name].read_ppr_dist) == False:
+                read_active_osc_names.append(osc_name)
+
+        return read_active_osc_names
+
+    def get_write_active_osc_names(self, prev_snap):
+        write_active_osc_names = []
+
+        for osc_name in self.osc_names:
+            if self.is_dist_rpc_count_equals(self.osc_snapshots[osc_name].write_ppr_dist, prev_snap.osc_snapshots[osc_name].write_ppr_dist) == False:
+                write_active_osc_names.append(osc_name)
+
+        return write_active_osc_names
+
+    def get_io_active_osc_names(self, prev_snap):
+        io_active_osc_names = []
+
+        for osc_name in self.osc_names:
+            if self.is_dist_rpc_count_equals(self.osc_snapshots[osc_name].read_ppr_dist, prev_snap.osc_snapshots[osc_name].read_ppr_dist) == False or self.is_dist_rpc_count_equals(self.osc_snapshots[osc_name].write_ppr_dist, prev_snap.osc_snapshots[osc_name].write_ppr_dist) == False:
+                io_active_osc_names.append(osc_name)
+
+        return io_active_osc_names
+
+    def construct_params_list(self, record_dur, prev_snap):
+        read_active_osc_names = self.get_read_active_osc_names(self, prev_snap)
+        write_active_osc_names = self.get_write_active_osc_names(self, prev_snap)
+        io_active_osc_names = self.get_io_active_osc_names(self, prev_snap)
+
         global obsvn_cnt
 
         params_list = []
         params_list = params_list + [obsvn_cnt]
-        params_list = params_list + self.get_avg_cur_dirty_bytes()
-        params_list = params_list + self.get_avg_cur_grant_bytes()
-        params_list = params_list + self.get_avg_waittime()
-        params_list = params_list + self.get_avg_read_rpc_bw()
-        params_list = params_list + self.get_avg_write_rpc_bw()
+        params_list = params_list + self.get_avg_cur_dirty_bytes(write_active_osc_names)
+        params_list = params_list + self.get_avg_cur_grant_bytes(write_active_osc_names)
+        params_list = params_list + self.get_avg_waittime(io_active_osc_names)
+        params_list = params_list + self.get_avg_read_rpc_bw(read_active_osc_names)
+        params_list = params_list + self.get_avg_write_rpc_bw(write_active_osc_names)
         params_list = params_list + [record_dur]
 
         return params_list
@@ -300,7 +354,7 @@ class Client_Snapshot:
         if obsvn_cnt == 0:
             self.include_params_header_and_summary(result_folder_path, wld_name)
 
-        self.write_params_list_to_csv(result_folder_path, wld_name, self.construct_params_list(record_dur))
+        self.write_params_list_to_csv(result_folder_path, wld_name, self.construct_params_list(record_dur, prev_snap))
 
 if __name__ == "__main__":
     script_dir = os.path.abspath(os.path.dirname(__file__))
@@ -318,7 +372,7 @@ if __name__ == "__main__":
 
     while True:
         end_time = time.time()
-        record_dur = end_time - begin_time
+        record_dur = round((end_time - begin_time), 2)
 
         cur_snap.populate_snapshot()
         begin_time = time.time()
