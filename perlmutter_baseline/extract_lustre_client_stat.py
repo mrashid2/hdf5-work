@@ -29,7 +29,7 @@ stat_summary_list = [
 client_page_size_in_bytes = 4096
 megabytes_to_bytes = 1024*1024
 
-snap_record_duration = 0
+snap_record_duration = 1
 
 # Tunable parameters
 mppr_str = 'max_pages_per_rpc'
@@ -201,17 +201,12 @@ class Client_Snapshot:
         val_list = self.extract_mult_stat_float_data_from_stats(import_lines, '^(\s+)MB_per_sec:(\s+)(\d+)\.(\d+)', [3, 4])
 
         if len(val_list) == 0:
-            print("No BW is reported for OSC: ", osc_name)
-            print(import_lines)
+            read_rpc_bw = 0
+            write_rpc_bw = 0
         elif len(val_list) == 1:
-            print("One BW value is available for OSC: ", osc_name)
-            print(import_lines[-4:])
-
             if self.check_avg_type(import_lines, '^(\s+)read_data_averages:'):
-                print("BW value type ==> READ")
                 read_rpc_bw = val_list[0]
             else:
-                print("BW value type ==> READ")
                 write_rpc_bw = val_list[0]
         else:
             read_rpc_bw = val_list[0]
@@ -383,7 +378,7 @@ if __name__ == "__main__":
     wld_name = sys.argv[2]
 
     cur_snap = Client_Snapshot()
-    print(cur_snap.osc_names)
+    # print(cur_snap.osc_names)
     prev_snap = Client_Snapshot()
     prev_snap.populate_snapshot()
 
