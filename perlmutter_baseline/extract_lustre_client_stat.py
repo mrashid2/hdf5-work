@@ -443,6 +443,42 @@ class Client_Snapshot:
 
         return [round((total_size_of_write_rpcs/ len(osc_names)), 2)]
 
+    def get_avg_of_diff_in_rpcs_in_flight_per_osc(self, cur_dist, prev_dist):
+        rpc_in_flight_cnt = 0
+        diff_in_rpcs_in_flight = 0
+
+        for key in self.cur_dist:
+            try:
+                rpc_in_flight_cnt += cur_dist[key][0] - prev_dist[key][0]
+                diff_in_rpcs_in_flight += (cur_dist[key][0] - prev_dist[key][0]) * key
+            except KeyError:
+                rpc_in_flight_cnt += cur_dist[key][0]
+                diff_in_rpcs_in_flight += cur_dist[key][0] * key
+
+        return round((diff_in_rpcs_in_flight / rpc_in_flight_cnt), 2)
+
+    def get_avg_no_of_in_flight_read_rpcs(self, osc_names, prev_snap):
+        if len(osc_names) == 0:
+            return [0]
+
+        total_no_of_in_flight_read_rpcs = 0
+
+        for osc_name in osc_names:
+            total_no_of_in_flight_read_rpcs += self.get_avg_of_diff_in_rpcs_in_flight_per_osc(self.osc_snapshots[osc_name].read_rif_dist, prev_snap.osc_snapshots[osc_name].read_rif_dist)
+
+        return [round((total_no_of_in_flight_read_rpcs/ len(osc_names)), 2)]
+
+    def get_avg_no_of_in_flight_write_rpcs(self, osc_names, prev_snap):
+        if len(osc_names) == 0:
+            return [0]
+
+        total_no_of_in_flight_write_rpcs = 0
+
+        for osc_name in osc_names:
+            total_no_of_in_flight_write_rpcs += self.get_avg_of_diff_in_rpcs_in_flight_per_osc(self.osc_snapshots[osc_name].write_rif_dist, prev_snap.osc_snapshots[osc_name].write_rif_dist)
+
+        return [round((total_no_of_in_flight_write_rpcs/ len(osc_names)), 2)]
+
     def get_read_active_osc_names(self, prev_snap):
         read_active_osc_names = []
 
@@ -490,6 +526,8 @@ class Client_Snapshot:
         params_list = params_list + self.get_avg_no_of_write_rpcs(write_active_osc_names, prev_snap)
         params_list = params_list + self.get_avg_size_of_read_rpcs(read_active_osc_names, prev_snap)
         params_list = params_list + self.get_avg_size_of_write_rpcs(write_active_osc_names, prev_snap)
+        params_list = params_list + self.get_avg_no_of_in_flight_read_rpcs(read_active_osc_names, prev_snap)
+        params_list = params_list + self.get_avg_no_of_in_flight_write_rpcs(write_active_osc_names, prev_snap)
         params_list = params_list + [record_dur]
 
         return params_list
