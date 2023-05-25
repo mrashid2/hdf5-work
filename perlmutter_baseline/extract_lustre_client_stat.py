@@ -81,7 +81,7 @@ stat_summary_list_per_osc = [
 client_page_size_in_bytes = 4096
 megabytes_to_bytes = 1024*1024
 
-snap_record_duration = 1
+snap_record_duration = 0.5
 
 # Tunable parameters
 mppr_str = 'max_pages_per_rpc'
