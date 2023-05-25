@@ -28,17 +28,53 @@ stat_summary_list = [
     'which observation it is (start from 1)',
     'average of all IO active OSCs current amount of dirty pages (in bytes)',
     'average of all IO active OSCs current amount of grant (in bytes)',
-    'average of all IO active OSCs all type of RPCs average waittime (in usec)',
-    'average of all read IO active OSCs read RPC bandwidth (in MB/s)',
-    'average of all write IO active OSCs write RPC bandwidth (in MB/s)',
-    'average of all read IO active OSCs read RPC latency (in microseconds)',
-    'average of all write IO active OSCs write RPC latency (in microseconds)',
-    'average no. of all read IO active OSCs issued read RPCs',
-    'average no. of all write IO active OSCs issued write RPCs',
-    'average size of all read IO active OSCs issued read RPCs (in bytes)',
-    'average size of all write IO active OSCs issued write RPCs (in bytes)',
-    'average value of all read IO active OSCs in flight read RPCs',
-    'average value of all write IO active OSCs in flight write RPCs',
+    'average of all IO active OSCs all type of transferred RPCs average waittime (in usec)',
+    'average of all read IO active OSCs transferred read RPCs during sample duration bandwidth (in MB/s)',
+    'average of all write IO active OSCs transferred write RPCs during sample duration bandwidth (in MB/s)',
+    'average of all read IO active OSCs transferred read RPCs during sample duration latency (in microseconds)',
+    'average of all write IO active OSCs transferred write RPCs during sample duration latency (in microseconds)',
+    'average no. of all read IO active OSCs transferred read RPCs during sample duration',
+    'average no. of all write IO active OSCs transferred write RPCs during sample duration',
+    'average size of all read IO active OSCs transferred read RPCs during sample duration (in bytes)',
+    'average size of all write IO active OSCs transferred write RPCs during sample duration (in bytes)',
+    'average value of all read IO active OSCs transferred in flight read RPCs during sample duration',
+    'average value of all write IO active OSCs transferred in flight write RPCs during sample duration',
+    'actual snapshot record duration'
+]
+
+stat_name_list_per_osc = [
+    'observation_no',
+    'cur_dirty_bytes',
+    'cur_grant_bytes',
+    'avg_waittime',
+    'avg_read_rpc_bw',
+    'avg_write_rpc_bw',
+    'avg_read_rpc_latency',
+    'avg_write_rpc_latency',
+    'no_of_read_rpcs',
+    'no_of_write_rpcs',
+    'avg_size_of_read_rpcs',
+    'avg_size_of_write_rpcs',
+    'avg_no_of_in_flight_read_rpcs',
+    'avg_no_of_in_flight_write_rpcs',
+    'actual_record_duration'
+]
+
+stat_summary_list_per_osc = [
+    'which observation it is (start from 1)',
+    'current amount of dirty pages (in bytes)',
+    'current amount of grant (in bytes)',
+    'average of all type of transferred RPCs average waittime (in usec)',
+    'average of transferred read RPCs during sample duration bandwidth (in MB/s)',
+    'average of transferred write RPCs during sample duration bandwidth (in MB/s)',
+    'average of transferred read RPCs during sample duration latency (in microseconds)',
+    'average of transferred write RPCs during sample duration latency (in microseconds)',
+    'no. of transferred read RPCs during sample duration',
+    'no. of transferred write RPCs during sample duration',
+    'average size of transferred read RPCs during sample duration (in bytes)',
+    'average size of transferred write RPCs during sample duration (in bytes)',
+    'average value of transferred in flight read RPCs during sample duration',
+    'average value of transferred in flight write RPCs during sample duration',
     'actual snapshot record duration'
 ]
 
@@ -102,6 +138,18 @@ class OSC_Snapshot:
         self.cur_dirty_bytes = 0
         self.cur_grant_bytes = 0
 
+        # The following parameters value represent what we observed during the duration of the last sample.
+        self.sample_read_rpc_latency = 0
+        self.sample_write_rpc_latency = 0
+        self.sample_read_rpc_bw = 0
+        self.sample_write_rpc_bw = 0
+        self.sample_read_rpc_cnt = 0
+        self.sample_write_rpc_cnt = 0
+        self.sample_read_rpc_avg_size = 0
+        self.sample_write_rpc_avg_size = 0
+        self.sample_read_rpc_avg_in_flight_cnt = 0
+        self.sample_write_rpc_avg_in_flight_cnt = 0
+
     def save_cur_rif(self, cur_read_rif, cur_write_rif):
         self.cur_read_rif = cur_read_rif
         self.cur_write_rif = cur_write_rif
@@ -117,6 +165,18 @@ class OSC_Snapshot:
     def save_rif_dist(self, read_rif_dist, write_rif_dist):
         self.read_rif_dist = read_rif_dist
         self.write_rif_dist = write_rif_dist
+
+    def reset_sample_variables(self):
+        self.sample_read_rpc_latency = 0
+        self.sample_write_rpc_latency = 0
+        self.sample_read_rpc_bw = 0
+        self.sample_write_rpc_bw = 0
+        self.sample_read_rpc_cnt = 0
+        self.sample_write_rpc_cnt = 0
+        self.sample_read_rpc_avg_size = 0
+        self.sample_write_rpc_avg_size = 0
+        self.sample_read_rpc_avg_in_flight_cnt = 0
+        self.sample_write_rpc_avg_in_flight_cnt = 0
 
 class Client_Snapshot:
     def __init__(self):
@@ -318,6 +378,7 @@ class Client_Snapshot:
             self.save_osc_rpc_dist_stats_data(osc_name)
             self.save_osc_import_data(osc_name)
             self.save_osc_params_data(osc_name)
+            self.osc_snapshots[osc_name].reset_sample_variables()
 
     def get_avg_cur_dirty_bytes(self, osc_names):
         if len(osc_names) == 0:
@@ -361,7 +422,8 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_bytes = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_bytes_per_rpc)
             diff_in_total_usec = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_rpc_latency)
-            total_read_rpc_bw += round((diff_in_total_bytes / diff_in_total_usec), 2)
+            self.osc_snapshots[osc_name].sample_read_rpc_bw = round((diff_in_total_bytes / diff_in_total_usec), 2)
+            total_read_rpc_bw += self.osc_snapshots[osc_name].sample_read_rpc_bw
 
         return [round((total_read_rpc_bw / len(osc_names)), 2)]
 
@@ -374,7 +436,8 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_bytes = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_bytes_per_rpc)
             diff_in_total_usec = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_rpc_latency)
-            total_write_rpc_bw += round((diff_in_total_bytes / diff_in_total_usec), 2)
+            self.osc_snapshots[osc_name].sample_write_rpc_bw = round((diff_in_total_bytes / diff_in_total_usec), 2)
+            total_write_rpc_bw += self.osc_snapshots[osc_name].sample_write_rpc_bw
 
         return [round((total_write_rpc_bw / len(osc_names)), 2)]
 
@@ -387,7 +450,8 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_usec = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_rpc_latency)
             diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_read_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt
-            total_read_rpc_latency += round((diff_in_total_usec / diff_in_rpc_cnt), 2)
+            self.osc_snapshots[osc_name].sample_read_rpc_latency = round((diff_in_total_usec / diff_in_rpc_cnt), 2)
+            total_read_rpc_latency += self.osc_snapshots[osc_name].sample_read_rpc_latency
 
         return [round((total_read_rpc_latency/ len(osc_names)), 2)]
 
@@ -400,7 +464,8 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_usec = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_rpc_latency)
             diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_write_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt
-            total_write_rpc_latency += round((diff_in_total_usec / diff_in_rpc_cnt), 2)
+            self.osc_snapshots[osc_name].sample_write_rpc_latency = round((diff_in_total_usec / diff_in_rpc_cnt), 2)
+            total_write_rpc_latency += self.osc_snapshots[osc_name].sample_write_rpc_latency
 
         return [round((total_write_rpc_latency / len(osc_names)), 2)]
 
@@ -411,7 +476,8 @@ class Client_Snapshot:
         total_no_of_read_rpcs = 0
 
         for osc_name in osc_names:
-            total_no_of_read_rpcs += (self.osc_snapshots[osc_name].total_read_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt)
+            self.osc_snapshots[osc_name].sample_read_rpc_cnt = self.osc_snapshots[osc_name].total_read_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt
+            total_no_of_read_rpcs += self.osc_snapshots[osc_name].sample_read_rpc_cnt
 
         return [round((total_no_of_read_rpcs/ len(osc_names)), 2)]
 
@@ -422,7 +488,8 @@ class Client_Snapshot:
         total_no_of_write_rpcs = 0
 
         for osc_name in osc_names:
-            total_no_of_write_rpcs += (self.osc_snapshots[osc_name].total_write_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt)
+            self.osc_snapshots[osc_name].sample_write_rpc_cnt = self.osc_snapshots[osc_name].total_write_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt
+            total_no_of_write_rpcs += self.osc_snapshots[osc_name].sample_write_rpc_cnt
 
         return [round((total_no_of_write_rpcs/ len(osc_names)), 2)]
 
@@ -435,7 +502,8 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_bytes = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_bytes_per_rpc)
             diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_read_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt
-            total_size_of_read_rpcs += round((diff_in_total_bytes / diff_in_rpc_cnt), 2)
+            self.osc_snapshots[osc_name].sample_read_rpc_avg_size = round((diff_in_total_bytes / diff_in_rpc_cnt), 2)
+            total_size_of_read_rpcs += self.osc_snapshots[osc_name].sample_read_rpc_avg_size
 
         return [round((total_size_of_read_rpcs/ len(osc_names)), 2)]
 
@@ -448,7 +516,8 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_bytes = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_bytes_per_rpc)
             diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_write_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt
-            total_size_of_write_rpcs += round((diff_in_total_bytes / diff_in_rpc_cnt), 2)
+            self.osc_snapshots[osc_name].sample_write_rpc_avg_size = round((diff_in_total_bytes / diff_in_rpc_cnt), 2)
+            total_size_of_write_rpcs += self.osc_snapshots[osc_name].sample_write_rpc_avg_size
 
         return [round((total_size_of_write_rpcs/ len(osc_names)), 2)]
 
@@ -473,7 +542,8 @@ class Client_Snapshot:
         total_no_of_in_flight_read_rpcs = 0
 
         for osc_name in osc_names:
-            total_no_of_in_flight_read_rpcs += self.get_avg_of_diff_in_rpcs_in_flight_per_osc(self.osc_snapshots[osc_name].read_rif_dist, prev_snap.osc_snapshots[osc_name].read_rif_dist)
+            self.osc_snapshots[osc_name].sample_read_rpc_avg_in_flight_cnt = self.get_avg_of_diff_in_rpcs_in_flight_per_osc(self.osc_snapshots[osc_name].read_rif_dist, prev_snap.osc_snapshots[osc_name].read_rif_dist)
+            total_no_of_in_flight_read_rpcs += self.osc_snapshots[osc_name].sample_read_rpc_avg_in_flight_cnt
 
         return [round((total_no_of_in_flight_read_rpcs/ len(osc_names)), 2)]
 
@@ -484,7 +554,8 @@ class Client_Snapshot:
         total_no_of_in_flight_write_rpcs = 0
 
         for osc_name in osc_names:
-            total_no_of_in_flight_write_rpcs += self.get_avg_of_diff_in_rpcs_in_flight_per_osc(self.osc_snapshots[osc_name].write_rif_dist, prev_snap.osc_snapshots[osc_name].write_rif_dist)
+            self.osc_snapshots[osc_name].sample_write_rpc_avg_in_flight_cnt = self.get_avg_of_diff_in_rpcs_in_flight_per_osc(self.osc_snapshots[osc_name].write_rif_dist, prev_snap.osc_snapshots[osc_name].write_rif_dist)
+            total_no_of_in_flight_write_rpcs += self.osc_snapshots[osc_name].sample_write_rpc_avg_in_flight_cnt
 
         return [round((total_no_of_in_flight_write_rpcs/ len(osc_names)), 2)]
 
@@ -541,9 +612,39 @@ class Client_Snapshot:
 
         return params_list
 
+    def construct_params_list_per_osc(self, record_dur, osc_name):
+        global obsvn_cnt
+
+        params_list = []
+        params_list = params_list + [obsvn_cnt]
+        params_list = params_list + self.osc_snapshots[osc_name].cur_dirty_bytes
+        params_list = params_list + self.osc_snapshots[osc_name].cur_grant_bytes
+        params_list = params_list + self.osc_snapshots[osc_name].avg_waittime
+        params_list = params_list + self.osc_snapshots[osc_name].sample_read_rpc_bw
+        params_list = params_list + self.osc_snapshots[osc_name].sample_write_rpc_bw
+        params_list = params_list + self.osc_snapshots[osc_name].sample_read_rpc_latency
+        params_list = params_list + self.osc_snapshots[osc_name].sample_write_rpc_latency
+        params_list = params_list + self.osc_snapshots[osc_name].sample_read_rpc_cnt
+        params_list = params_list + self.osc_snapshots[osc_name].sample_write_rpc_cnt
+        params_list = params_list + self.osc_snapshots[osc_name].sample_read_rpc_avg_size
+        params_list = params_list + self.osc_snapshots[osc_name].sample_write_rpc_avg_size
+        params_list = params_list + self.osc_snapshots[osc_name].sample_read_rpc_avg_in_flight_cnt
+        params_list = params_list + self.osc_snapshots[osc_name].sample_write_rpc_avg_in_flight_cnt
+        params_list = params_list + [record_dur]
+
+        return params_list
+
     def write_params_list_to_csv(self, result_folder_path, wld_name, params_list):
         script_dir = os.path.abspath(os.path.dirname(__file__))
         osc_csv_filename = os.path.join(script_dir, result_folder_path, wld_name + "_" + hostname + "_client_stats_sheet.csv")
+
+        with open(osc_csv_filename, "a") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow([param for param in params_list])
+
+    def write_params_list_to_csv_per_osc(self, result_folder_path, wld_name, params_list, osc_name):
+        script_dir = os.path.abspath(os.path.dirname(__file__))
+        osc_csv_filename = os.path.join(script_dir, result_folder_path, wld_name + "_" + hostname + "_" + osc_name + "_osc_stats_sheet.csv")
 
         with open(osc_csv_filename, "a") as csv_file:
             writer = csv.writer(csv_file)
@@ -553,6 +654,10 @@ class Client_Snapshot:
         self.write_params_list_to_csv(result_folder_path, wld_name, stat_name_list)
         self.write_params_list_to_csv(result_folder_path, wld_name, stat_summary_list)
 
+    def include_params_header_and_summary_per_osc(self, result_folder_path, wld_name, osc_name):
+        self.write_params_list_to_csv_per_osc(result_folder_path, wld_name, stat_name_list_per_osc, osc_name)
+        self.write_params_list_to_csv_per_osc(result_folder_path, wld_name, stat_summary_list_per_osc, osc_name)
+
     def store_params_to_csv(self, result_folder_path, wld_name, record_dur, prev_snap):
         global obsvn_cnt
         obsvn_cnt = obsvn_cnt + 1
@@ -560,6 +665,22 @@ class Client_Snapshot:
             self.include_params_header_and_summary(result_folder_path, wld_name)
 
         self.write_params_list_to_csv(result_folder_path, wld_name, self.construct_params_list(record_dur, prev_snap))
+
+    def store_params_to_csv_per_osc(self, result_folder_path, wld_name, record_dur, prev_snap):
+        global obsvn_cnt
+        io_active_osc_names = self.get_io_active_osc_names(prev_snap)
+
+        for osc_name in io_active_osc_names:
+            if obsvn_cnt == 0:
+                self.include_params_header_and_summary_per_osc(result_folder_path, wld_name, osc_name)
+
+            self.write_params_list_to_csv_per_osc(result_folder_path, wld_name, self.construct_params_list_per_osc(record_dur, osc_name), osc_name)
+
+    def store_params(self, result_folder_path, wld_name, record_dur, prev_snap):
+        self.store_params_to_csv(result_folder_path, wld_name, record_dur, prev_snap)
+
+        # 'store_params_to_csv_per_osc' method MUST be called after 'store_params_to_csv' method
+        self.store_params_to_csv_per_osc(result_folder_path, wld_name, record_dur, prev_snap)
 
 if __name__ == "__main__":
     script_dir = os.path.abspath(os.path.dirname(__file__))
@@ -583,7 +704,7 @@ if __name__ == "__main__":
         begin_time = time.time()
         print('Snapshot Generation Time: ', int((time.time() - end_time) * 1000), ' miliseconds')
 
-        cur_snap.store_params_to_csv(result_folder_path, wld_name, record_dur, prev_snap)
+        cur_snap.store_params(result_folder_path, wld_name, record_dur, prev_snap)
         prev_snap = copy.deepcopy(cur_snap)
         print('Processing Time (Before Sleeping): ', int((time.time() - end_time) * 1000), ' miliseconds')
 
