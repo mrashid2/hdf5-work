@@ -93,6 +93,7 @@ class OSC_Snapshot:
         self.avg_waittime = 0
         self.read_bytes_per_rpc = 0
         self.write_bytes_per_rpc = 0
+        # The latency's are also per RPC
         self.read_rpc_latency = 0
         self.write_rpc_latency = 0
         self.read_rpc_bw = 0
@@ -351,47 +352,55 @@ class Client_Snapshot:
 
         return [round((total_avg_waittime / len(osc_names)), 2)]
 
-    def get_avg_read_rpc_bw(self, osc_names):
+    def get_avg_read_rpc_bw(self, osc_names, prev_snap):
         if len(osc_names) == 0:
             return [0]
 
         total_read_rpc_bw = 0
 
         for osc_name in osc_names:
-            total_read_rpc_bw += self.osc_snapshots[osc_name].read_rpc_bw
+            diff_in_total_bytes = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_bytes_per_rpc)
+            diff_in_total_usec = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_rpc_latency)
+            total_read_rpc_bw += round((diff_in_total_bytes / diff_in_total_usec), 2)
 
         return [round((total_read_rpc_bw / len(osc_names)), 2)]
 
-    def get_avg_write_rpc_bw(self, osc_names):
+    def get_avg_write_rpc_bw(self, osc_names, prev_snap):
         if len(osc_names) == 0:
             return [0]
 
         total_write_rpc_bw = 0
 
         for osc_name in osc_names:
-            total_write_rpc_bw += self.osc_snapshots[osc_name].write_rpc_bw
+            diff_in_total_bytes = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_bytes_per_rpc)
+            diff_in_total_usec = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_rpc_latency)
+            total_write_rpc_bw += round((diff_in_total_bytes / diff_in_total_usec), 2)
 
         return [round((total_write_rpc_bw / len(osc_names)), 2)]
 
-    def get_avg_read_rpc_latency(self, osc_names):
+    def get_avg_read_rpc_latency(self, osc_names, prev_snap):
         if len(osc_names) == 0:
             return [0]
 
         total_read_rpc_latency = 0
 
         for osc_name in osc_names:
-            total_read_rpc_latency += self.osc_snapshots[osc_name].read_rpc_latency
+            diff_in_total_usec = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_rpc_latency)
+            diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_read_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt
+            total_read_rpc_latency += round((diff_in_total_usec / diff_in_rpc_cnt), 2)
 
         return [round((total_read_rpc_latency/ len(osc_names)), 2)]
 
-    def get_avg_write_rpc_latency(self, osc_names):
+    def get_avg_write_rpc_latency(self, osc_names, prev_snap):
         if len(osc_names) == 0:
             return [0]
 
         total_write_rpc_latency= 0
 
         for osc_name in osc_names:
-            total_write_rpc_latency += self.osc_snapshots[osc_name].write_rpc_latency
+            diff_in_total_usec = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_rpc_latency) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_rpc_latency)
+            diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_write_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt
+            total_write_rpc_latency += round((diff_in_total_usec / diff_in_rpc_cnt), 2)
 
         return [round((total_write_rpc_latency / len(osc_names)), 2)]
 
@@ -426,7 +435,7 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_bytes = (self.osc_snapshots[osc_name].total_read_rpc_cnt * self.osc_snapshots[osc_name].read_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt * prev_snap.osc_snapshots[osc_name].read_bytes_per_rpc)
             diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_read_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_read_rpc_cnt
-            total_size_of_read_rpcs += (diff_in_total_bytes / diff_in_rpc_cnt)
+            total_size_of_read_rpcs += round((diff_in_total_bytes / diff_in_rpc_cnt), 2)
 
         return [round((total_size_of_read_rpcs/ len(osc_names)), 2)]
 
@@ -439,7 +448,7 @@ class Client_Snapshot:
         for osc_name in osc_names:
             diff_in_total_bytes = (self.osc_snapshots[osc_name].total_write_rpc_cnt * self.osc_snapshots[osc_name].write_bytes_per_rpc) - (prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt * prev_snap.osc_snapshots[osc_name].write_bytes_per_rpc)
             diff_in_rpc_cnt = self.osc_snapshots[osc_name].total_write_rpc_cnt - prev_snap.osc_snapshots[osc_name].total_write_rpc_cnt
-            total_size_of_write_rpcs += (diff_in_total_bytes / diff_in_rpc_cnt)
+            total_size_of_write_rpcs += round((diff_in_total_bytes / diff_in_rpc_cnt), 2)
 
         return [round((total_size_of_write_rpcs/ len(osc_names)), 2)]
 
@@ -518,10 +527,10 @@ class Client_Snapshot:
         params_list = params_list + self.get_avg_cur_dirty_bytes(io_active_osc_names)
         params_list = params_list + self.get_avg_cur_grant_bytes(io_active_osc_names)
         params_list = params_list + self.get_avg_waittime(io_active_osc_names)
-        params_list = params_list + self.get_avg_read_rpc_bw(read_active_osc_names)
-        params_list = params_list + self.get_avg_write_rpc_bw(write_active_osc_names)
-        params_list = params_list + self.get_avg_read_rpc_latency(read_active_osc_names)
-        params_list = params_list + self.get_avg_write_rpc_latency(write_active_osc_names)
+        params_list = params_list + self.get_avg_read_rpc_bw(read_active_osc_names, prev_snap)
+        params_list = params_list + self.get_avg_write_rpc_bw(write_active_osc_names, prev_snap)
+        params_list = params_list + self.get_avg_read_rpc_latency(read_active_osc_names, prev_snap)
+        params_list = params_list + self.get_avg_write_rpc_latency(write_active_osc_names, prev_snap)
         params_list = params_list + self.get_avg_no_of_read_rpcs(read_active_osc_names, prev_snap)
         params_list = params_list + self.get_avg_no_of_write_rpcs(write_active_osc_names, prev_snap)
         params_list = params_list + self.get_avg_size_of_read_rpcs(read_active_osc_names, prev_snap)
