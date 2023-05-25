@@ -35,6 +35,10 @@ export DXT_ENABLE_IO_TRACE=4
 #print romio hints
 export ROMIO_PRINT_HINTS=1
 
+export OUTDIR="$SCRATCH/outputs/$SLURM_JOBID"
+export LOCALDIR="/dev/shm/$SLURM_JOBID"
+mkdir -p "$OUTDIR"
+
 #two varying parameters: 1. number of aggregators, 2. stripe size 
 half_aggr=$((NNODE/2))
 quat_aggr=$((NNODE/4))
@@ -45,7 +49,7 @@ qudr_aggr=$((NNODE*4))
 naggrs="$doul_aggr $qudr_aggr $eqal_aggr $half_aggr $quat_aggr"
 stripe_sizes="1m 2m 4m 8m 16m 32m 64m 128m"
 
-run_cmd="srun -N NNODE -n NNODE --exclusive"
+run_cmd="srun -N NNODE -n NNODE  --ntasks-per-node 1 --exclusive"
 
 # Define a timestamp function
 timestamp() {
@@ -158,6 +162,9 @@ ior(){
     # rm -rf $CDIR
 }
 
+# Create the local directory in /dev/shm, using one process per node
+$run_cmd mkdir -p "$LOCALDIR"
+
 echo "Before Loop"
 for i in 1; do
     echo "i: $i"
@@ -168,8 +175,8 @@ for i in 1; do
             echo "Starting python background process"
             timestamp
 
-            mkdir -p $SDIR/${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr
-            $run_cmd python -u $SDIR/extract_lustre_client_stat.py $SDIR/${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr ${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr &>> ${i}_${ncore}_${burst}${unit}_pylog &
+            $run_cmd mkdir -p "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr
+            $run_cmd python -u $SDIR/extract_lustre_client_stat.py "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr ${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr &>> ${i}_${ncore}_${burst}${unit}_pylog &
             pid=$!
             echo "Started python background process"
             timestamp
@@ -186,6 +193,10 @@ for i in 1; do
 echo "Iter $i Done"
 timestamp
 done
+
+# Send one "collecting" process to archive all local directories into separate archives
+# We have to use 'bash -c' because 'hostname' needs to be interpreted on each node separately
+$run_cmd bash -c 'tar -cf "$OUTDIR/output_$(hostname).tar" -C "$LOCALDIR" .'
 
 date
 echo "====Done===="
