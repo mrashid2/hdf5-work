@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH -N NNODE
-#SBATCH -n 264
+#SBATCH -n 136
 #SBATCH -q debug
 #SBATCH -A m2621
 #SBATCH -t 00:05:00
@@ -39,7 +39,7 @@ export OUTDIR="$SCRATCH/outputs/$SLURM_JOBID"
 export LOCALDIR="/dev/shm/$SLURM_JOBID"
 mkdir -p "$OUTDIR"
 
-#two varying parameters: 1. number of aggregators, 2. stripe size 
+#two varying parameters: 1. number of aggregators, 2. stripe size
 half_aggr=$((NNODE/2))
 quat_aggr=$((NNODE/4))
 eqal_aggr=NNODE
@@ -49,7 +49,7 @@ qudr_aggr=$((NNODE*4))
 naggrs="$doul_aggr $qudr_aggr $eqal_aggr $half_aggr $quat_aggr"
 stripe_sizes="1m 2m 4m 8m 16m 32m 64m 128m"
 
-run_cmd="srun -N NNODE -n NNODE  --ntasks-per-node 1 --exclusive"
+run_cmd="srun -N NNODE -n NNODE --ntasks-per-node 1 --exclusive"
 
 # Define a timestamp function
 timestamp() {
@@ -60,7 +60,7 @@ ior(){
     local i=$1
     local ncore=$2
     local burst=$3
- 
+
     #check file size to determine alignment setting
     size="${burst//k}"
     fileSize=$(($size*$ncore*NNODE/1024))
@@ -70,7 +70,7 @@ ior(){
         align=1m
     fi
 
-    #check file size to determine default lustre striping, by following nersc recommendation 
+    #check file size to determine default lustre striping, by following nersc recommendation
     DDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_default
     if [[ ! -d $DDIR ]]; then
         mkdir -p $DDIR
@@ -79,12 +79,12 @@ ior(){
         medium="-c 24 -S 1m $DDIR"
         large="-c 72 -S 1m $DDIR"
         if [[ $fGB -le 10 ]]; then
-            Lustre_Default=$small 
+            Lustre_Default=$small
         elif [[ $fGB -gt 10 && $fGB -le 100 ]]; then
             Lustre_Default=$medium
-        elif [[ $fGB -gt 10 && $fGB -le 100 ]]; then
-            Lustre_Deafult=$large 
-        fi 
+        elif [[ $fGB -gt 100 ]]; then
+            Lustre_Deafult=$large
+        fi
 
         lfs setstripe $Lustre_Default
     	echo "lustre default, ${ncore}_${burst}, $fGB, $Lustre_Default"
@@ -98,46 +98,46 @@ ior(){
         col_write(){
             local naggr=$1
             local stripe_size=$2
-	        CDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_${stripe_size}
+	        CDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_default
             mkdir -p $CDIR
-	
+
 	        #load romio hints
             # export ROMIO_HINTS=$hfile
             hfile=$rdir/aggr_${naggr}
-            cp hints/aggr_${naggr} $hfile  
+            cp hints/aggr_${naggr} $hfile
             hvalue=`cat $hfile`
             echo "$hvalue"
-            export MPICH_MPIIO_HINTS="*:$hvalue"
+            export MPICH_MPIIO_HINTS="*:cb_nodes=16:cray_cb_nodes_multiplier=2:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:2"
             echo $MPICH_MPIIO_HINTS
 
-            #flush data in data transfer, before file close 
+            #flush data in data transfer, before file close
             let NPROC=NNODE*$ncore
             export LD_PRELOAD=/global/common/software/nersc/pm-2022q3/sw/darshan/3.4.0-hdf5/lib/libdarshan.so
             srun -N NNODE -n $NPROC --exclusive $EXEC -b $burst -t $burst -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -e -w -o $CDIR/col_${i}_${ncore}_${burst}_${naggr}_${stripe_size}_f&>>$rdir/col_${ncore}_${burst}_${naggr}_${stripe_size}_f
             export LD_PRELOAD=""
         }
 
-        for naggr in $quat_aggr; do
-            for stripe_size in 16m; do 
+        for naggr in $doul_aggr; do
+            for stripe_size in 1m; do
                     col_write $naggr $stripe_size
             done
         done
     }
-    
+
     ior_read(){
-        col_read(){ 
+        col_read(){
             local naggr=$1
             local stripe_size=$2
-	        CDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_${stripe_size}
+	        CDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_default
             mkdir -p $CDIR
-	        
+
             #load romio hints
             # export ROMIO_HINTS=$rdir/aggr_${naggr}_${buffer}
             hfile=$rdir/aggr_${naggr}
-            cp hints/aggr_${naggr} $hfile  
+            cp hints/aggr_${naggr} $hfile
             hvalue=`cat $rdir/aggr_${naggr}`
             echo "$hvalue"
-            export MPICH_MPIIO_HINTS="*:$hvalue"
+            export MPICH_MPIIO_HINTS="*:cb_nodes=16:cray_cb_nodes_multiplier=2:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:2"
             echo $MPICH_MPIIO_HINTS
 
             let NPROC=NNODE*$ncore
@@ -146,20 +146,20 @@ ior(){
             export LD_PRELOAD=""
         }
 
-        for naggr in $quat_aggr; do
-            for stripe_size in 16m; do 
+        for naggr in $doul_aggr; do
+            for stripe_size in 1m; do
                     col_read $naggr $stripe_size
             done
         done
     }
-    
+
     ior_write
-    echo "ior_write done!" 
+    echo "ior_write done!"
     ior_read
     echo "ior_read done!"
 
-    # CDIR=${SCRATCH}/ior_data
-    # rm -rf $CDIR
+    CDIR=${SCRATCH}/ior_data
+    rm -rf $CDIR
 }
 
 # Create the local directory in /dev/shm, using one process per node
@@ -168,15 +168,15 @@ $run_cmd mkdir -p "$LOCALDIR"
 echo "Before Loop"
 for i in 1; do
     echo "i: $i"
-    for ncore in 16; do
+    for ncore in 8; do
         echo "ncore: $ncore"
-        for burst in 2721k; do
+        for burst in 139996k; do
             echo "burst: $burst"
             echo "Starting python background process"
             timestamp
 
-            $run_cmd mkdir -p "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr
-            $run_cmd python -u $SDIR/extract_lustre_client_stat.py "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr ${i}_ncore_${ncore}_burst_${burst}_aggr_$quat_aggr &>> ${i}_${ncore}_${burst}${unit}_pylog &
+            $run_cmd mkdir -p "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$doul_aggr
+            $run_cmd python -u $SDIR/extract_lustre_client_stat.py "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$doul_aggr ${i}_ncore_${ncore}_burst_${burst}_aggr_$doul_aggr &>> ${i}_${ncore}_${burst}${unit}_pylog &
             pid=$!
             echo "Started python background process"
             timestamp
