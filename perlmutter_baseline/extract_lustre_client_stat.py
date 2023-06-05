@@ -4,7 +4,21 @@ import csv
 import sys
 import copy
 import time
+import shutil
+import signal
 import subprocess
+
+hostname = subprocess.run(['hostname'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()[0]
+
+stat_source_directory = ""
+stat_destination_directory = ""
+
+def transfer_monitoring_data(signal, frame):
+    shutil.copytree(stat_source_directory, stat_destination_directory, dirs_exist_ok=True)
+    sys.exit()
+
+# Register the function to be called at exit
+signal.signal(signal.SIGTERM, transfer_monitoring_data)
 
 stat_name_list = [
     'observation_no',
@@ -112,8 +126,6 @@ osc_sys_fs_path = '/sys/fs/lustre/osc/'
 
 # changing params
 obsvn_cnt = -1
-
-hostname = subprocess.run(['hostname'], stdout=subprocess.PIPE).stdout.decode('utf-8').splitlines()[0]
 
 class OSC_Snapshot:
     def __init__(self, osc_name):
@@ -698,7 +710,9 @@ if __name__ == "__main__":
     script_dir = os.path.abspath(os.path.dirname(__file__))
     # relative path from the script
     result_folder_path = sys.argv[1]
+    stat_source_directory = result_folder_path
     wld_name = sys.argv[2]
+    stat_destination_directory = sys.argv[3]
 
     cur_snap = Client_Snapshot()
     # print(cur_snap.osc_names)
@@ -714,10 +728,10 @@ if __name__ == "__main__":
 
         cur_snap.populate_snapshot()
         begin_time = time.time()
-        print('Snapshot Generation Time: ', int((time.time() - end_time) * 1000), ' miliseconds')
+        print('[', hostname, ']Snapshot Generation Time: ', int((time.time() - end_time) * 1000), ' miliseconds')
 
         cur_snap.store_params(result_folder_path, wld_name, record_dur, prev_snap)
         prev_snap = copy.deepcopy(cur_snap)
-        print('Processing Time (Before Sleeping): ', int((time.time() - end_time) * 1000), ' miliseconds')
+        print('[', hostname, ']Processing Time (Before Sleeping): ', int((time.time() - end_time) * 1000), ' miliseconds')
 
         time.sleep(snap_record_duration)
