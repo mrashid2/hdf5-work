@@ -1,26 +1,33 @@
 #!/bin/bash -l
 #SBATCH -N NNODE
-#SBATCH -n 136
-#SBATCH -q debug
+#SBATCH -n EXCLSVPROC
+#SBATCH -q regular
 #SBATCH -A m2621
 #SBATCH -t 00:05:00
-#SBATCH -C cpu
+#SBATCH -C NODETYPE
 #SBATCH -L SCRATCH # needs the parallel file system
 #SBATCH -J IOR_NNODEnode
 #SBATCH -o o%j.ior_NNODEnode
 #SBATCH -e o%j.ior_NNODEnode
 
 SDIR=${SCRATCH}
+DDIR=$SDIR/ior_data/$SLURM_JOBID
 EXEC=${HOME}/benchmarks/ior/src/ior
 
-module unload craype-accel-nvidia80
-module unload cpe-cuda/23.02
-module unload cray-hdf5-parallel/1.12.2.3
-module unload cray-hdf5/1.12.2.3
-module unload darshan/3.4.0-hdf5
-module unload python
+# trap the signal to the main BATCH script here.
+sig_handler()
+{
+    echo "BATCH interrupted"
+    rm -rf $DDIR
+    wait # wait for all children, this is important!
+}
 
-module load cpe-cuda/23.02
+trap 'sig_handler' SIGINT SIGTERM SIGCONT
+
+module unload cray-hdf5/1.12.2.3
+module unload cpe-cuda/23.03
+
+module load cpe-cuda/23.03
 module load cray-hdf5-parallel/1.12.2.3
 module load darshan/3.4.0-hdf5
 module load python
@@ -29,41 +36,32 @@ module load python
 export MPICH_MPIIO_STATS=1
 export MPICH_MPIIO_HINTS_DISPLAY=1
 export MPICH_MPIIO_TIMERS=1
+export MPICH_MPIIO_AGGREGATOR_PLACEMENT_DISPLAY=1
 export DARSHAN_DISABLE_SHARED_REDUCTION=1
 export DXT_ENABLE_IO_TRACE=4
 
 #print romio hints
 export ROMIO_PRINT_HINTS=1
 
-export OUTDIR="$SCRATCH/outputs/$SLURM_JOBID"
+export LLOGDIR="$SDIR/node/NODETYPE_NNODE/core_CORECNT/io_burst_IOBURST/stripe_STRIPETYPE/buf_size_BUFSIZE/aggr_AGGRCNT/itrn_ITRNCNT/$SLURM_JOBID"
+export SLOGDIR="$SDIR/node/NODETYPE_NNODE/core_CORECNT/io_burst_IOBURST/stripe_STRIPETYPE/buf_size_BUFSIZE/aggr_AGGRCNT/itrn_ITRNCNT/$SLURM_JOBID/lustre_stats"
 export LOCALDIR="/dev/shm/$SLURM_JOBID"
-mkdir -p "$OUTDIR"
-
-#two varying parameters: 1. number of aggregators, 2. stripe size
-half_aggr=$((NNODE/2))
-quat_aggr=$((NNODE/4))
-eqal_aggr=NNODE
-doul_aggr=$((NNODE*2))
-qudr_aggr=$((NNODE*4))
-
-naggrs="$doul_aggr $qudr_aggr $eqal_aggr $half_aggr $quat_aggr"
-stripe_sizes="1m 2m 4m 8m 16m 32m 64m 128m"
+mkdir -p "$LLOGDIR"
+mkdir -p "$SLOGDIR"
 
 run_cmd="srun -N NNODE -n NNODE --ntasks-per-node 1 --exclusive"
+excn_marker="NODETYPE_node_NNODE_ncore_CORECNT_ioburst_IOBURST_stripe_STRIPETYPE_bufsize_BUFSIZE_aggr_AGGRCNT_itrn_ITRNCNT"
 
 # Define a timestamp function
 timestamp() {
-  date +"%Y%m%d_%H%M%S" # current time
+    date +"%Y%m%d_%H%M%S" # current time
 }
 
 ior(){
-    local i=$1
-    local ncore=$2
-    local burst=$3
-
     #check file size to determine alignment setting
-    size="${burst//k}"
-    fileSize=$(($size*$ncore*NNODE/1024))
+    size=$(echo "IOBURST" | sed 's/k//g')
+    fileSize=$(($size*CORECNT*NNODE/1024))
+    echo "size in KB: $size; fileSize in MB:$fileSize"
     if [[ $fileSize -ge 16 ]]; then
         align=16m
     else
@@ -71,132 +69,118 @@ ior(){
     fi
 
     #check file size to determine default lustre striping, by following nersc recommendation
-    DDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_default
+    stripe_count=1
     if [[ ! -d $DDIR ]]; then
         mkdir -p $DDIR
-        fGB=$(($fileSize/1024))
+        default="-c 1 -S 1m $DDIR"
         small="-c 8 -S 1m $DDIR"
         medium="-c 24 -S 1m $DDIR"
-        large="-c 72 -S 1m $DDIR"
-        if [[ $fGB -le 10 ]]; then
+        large="-c 64 -S 1m $DDIR"
+        Lustre_Default=$default
+
+        if [ STRIPETYPE = "small" ]; then
             Lustre_Default=$small
-        elif [[ $fGB -gt 10 && $fGB -le 100 ]]; then
+            stripe_count=8
+        elif [ STRIPETYPE = "medium" ]; then
             Lustre_Default=$medium
-        elif [[ $fGB -gt 100 ]]; then
-            Lustre_Deafult=$large
+            stripe_count=24
+        elif [ STRIPETYPE = "large" ]; then
+            Lustre_Default=$large
+            stripe_count=64
         fi
 
         lfs setstripe $Lustre_Default
-    	echo "lustre default, ${ncore}_${burst}, $fGB, $Lustre_Default"
+        echo "lustre default, "$excn_marker", $Lustre_Default"
     fi
 
     #track results
-    rdir=result_${ncore}_${burst}
+    rdir="$LLOGDIR"/ior_excn_outputs
     mkdir -p $rdir
 
     ior_write(){
         col_write(){
-            local naggr=$1
-            local stripe_size=$2
-	        CDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_default
-            mkdir -p $CDIR
+            naggr=$((NNODE*AGGRCNT))
+            multiplier_cnt=1
+            if [[ $naggr -gt $stripe_count ]]; then
+                multiplier_cnt=$(( $naggr/$stripe_count ))
+            fi
 
-	        #load romio hints
-            # export ROMIO_HINTS=$hfile
-            hfile=$rdir/aggr_${naggr}
-            cp hints/aggr_${naggr} $hfile
-            hvalue=`cat $hfile`
-            echo "$hvalue"
-            export MPICH_MPIIO_HINTS="*:cb_nodes=16:cray_cb_nodes_multiplier=2:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:2"
+            export MPICH_MPIIO_HINTS="*:cb_nodes=$naggr:cb_buffer_size=BUFSIZE:cray_cb_nodes_multiplier=$multiplier_cnt:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:AGGRCNT"
             echo $MPICH_MPIIO_HINTS
 
             #flush data in data transfer, before file close
-            let NPROC=NNODE*$ncore
+            NPROC=$((NNODE*CORECNT))
             export LD_PRELOAD=/global/common/software/nersc/pm-2022q3/sw/darshan/3.4.0-hdf5/lib/libdarshan.so
-            srun -N NNODE -n $NPROC --exclusive $EXEC -b $burst -t $burst -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -e -w -o $CDIR/col_${i}_${ncore}_${burst}_${naggr}_${stripe_size}_f&>>$rdir/col_${ncore}_${burst}_${naggr}_${stripe_size}_f
+            srun -N NNODE -n $NPROC --exclusive $EXEC -b IOBURST -t IOBURST -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -e -w -o $DDIR/col_"$excn_marker"_f&>>$rdir/col_"$excn_marker"_f
             export LD_PRELOAD=""
+            lfs getstripe $DDIR/col_"$excn_marker"_f
         }
 
-        for naggr in $doul_aggr; do
-            for stripe_size in 1m; do
-                    col_write $naggr $stripe_size
-            done
-        done
+        col_write
     }
 
     ior_read(){
         col_read(){
-            local naggr=$1
-            local stripe_size=$2
-	        CDIR=$SCRATCH/ior_data/ior_${ncore}_${burst}_default
-            mkdir -p $CDIR
+	        naggr=$((NNODE*AGGRCNT))
+            multiplier_cnt=1
+            if [[ $naggr -gt $stripe_count ]]; then
+                multiplier_cnt=$(( $naggr/$stripe_count ))
+            fi
 
-            #load romio hints
-            # export ROMIO_HINTS=$rdir/aggr_${naggr}_${buffer}
-            hfile=$rdir/aggr_${naggr}
-            cp hints/aggr_${naggr} $hfile
-            hvalue=`cat $rdir/aggr_${naggr}`
-            echo "$hvalue"
-            export MPICH_MPIIO_HINTS="*:cb_nodes=16:cray_cb_nodes_multiplier=2:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:2"
+            export MPICH_MPIIO_HINTS="*:cb_nodes=$naggr:cb_buffer_size=BUFSIZE:cray_cb_nodes_multiplier=$multiplier_cnt:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:AGGRCNT"
             echo $MPICH_MPIIO_HINTS
 
-            let NPROC=NNODE*$ncore
+            NPROC=$((NNODE*CORECNT))
             export LD_PRELOAD=/global/common/software/nersc/pm-2022q3/sw/darshan/3.4.0-hdf5/lib/libdarshan.so
-            srun -N NNODE -n $NPROC --exclusive $EXEC -b $burst -t $burst -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -r -o $CDIR/col_${i}_${ncore}_${burst}_${naggr}_${stripe_size}_f&>>$rdir/col_${ncore}_${burst}_${naggr}_${stripe_size}_r
+            srun -N NNODE -n $NPROC --exclusive $EXEC -b IOBURST -t IOBURST -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -r -o $DDIR/col_"$excn_marker"_f&>>$rdir/col_"$excn_marker"_r
             export LD_PRELOAD=""
         }
 
-        for naggr in $doul_aggr; do
-            for stripe_size in 1m; do
-                    col_read $naggr $stripe_size
-            done
-        done
+        col_read
     }
 
-    ior_write
-    echo "ior_write done!"
-    ior_read
-    echo "ior_read done!"
+    aggr_data_thrshld_bytes=$(( 32*1024*1024*1024 ))
+    aggr_data_size_bytes=$(( $fileSize*1024*1024 ))
+    echo "aggr_data_thrshld_bytes: $aggr_data_thrshld_bytes; aggr_data_size_bytes: $aggr_data_size_bytes"
 
-    CDIR=${SCRATCH}/ior_data
-    rm -rf $CDIR
+    loop_needed=1
+    if [[ $aggr_data_thrshld_bytes -gt $aggr_data_size_bytes ]]; then
+        loop_needed=$(( $aggr_data_thrshld_bytes/$aggr_data_size_bytes ))
+    fi
+    echo "loop_needed: $loop_needed"
+
+    for loop_cnt in $(seq 1 1 $loop_needed); do
+        ior_write
+        ior_read
+        echo "loop $loop_cnt ior_write+ior_read done!"
+    done
+
+    rm -rf $DDIR
 }
 
 # Create the local directory in /dev/shm, using one process per node
 $run_cmd mkdir -p "$LOCALDIR"
 
-echo "Before Loop"
-for i in 1; do
-    echo "i: $i"
-    for ncore in 8; do
-        echo "ncore: $ncore"
-        for burst in 139996k; do
-            echo "burst: $burst"
-            echo "Starting python background process"
-            timestamp
 
-            $run_cmd mkdir -p "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$doul_aggr
-            $run_cmd python -u $SDIR/extract_lustre_client_stat.py "$LOCALDIR"/${i}_ncore_${ncore}_burst_${burst}_aggr_$doul_aggr ${i}_ncore_${ncore}_burst_${burst}_aggr_$doul_aggr &>> ${i}_${ncore}_${burst}${unit}_pylog &
-            pid=$!
-            echo "Started python background process"
-            timestamp
-
-            ior $i $ncore $burst
-            echo "Finished IOR execution"
-            timestamp
-
-            # Cancel the srun job
-            echo "Cancelling srun job with PID $pid"
-            scancel $pid
-        done
-    done
-echo "Iter $i Done"
+echo "Starting python background process"
 timestamp
-done
 
-# Send one "collecting" process to archive all local directories into separate archives
-# We have to use 'bash -c' because 'hostname' needs to be interpreted on each node separately
-$run_cmd bash -c 'tar -cf "$OUTDIR/output_$(hostname).tar" -C "$LOCALDIR" .'
+pdir="$LLOGDIR"/pyscript_logs
+mkdir -p $pdir
+$run_cmd mkdir -p "$LOCALDIR"/"$excn_marker"
+$run_cmd python -u $SDIR/extract_lustre_client_stat.py "$LOCALDIR"/"$excn_marker" "$excn_marker" $SLOGDIR &>> $pdir/"$excn_marker"_pylog &
+pid=$!
+echo "Started python background process"
+timestamp
+
+ior
+echo "Finished IOR execution"
+timestamp
+
+# Cancel the srun job
+echo "Cancelling srun job with PID $pid"
+scancel $pid
+timestamp
 
 date
 echo "====Done===="
