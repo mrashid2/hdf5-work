@@ -15,7 +15,7 @@ for node_type in "cpu" "gpu"; do
                             tmp_dir=./node/"$node_type"_"$node_cnt"/core_$core_cnt/io_burst_$io_burst_size/stripe_$stripe_format/buf_size_$buf_size/aggr_$aggr_cnt/itrn_$itrn_cnt
                             mkdir -p $tmp_dir
                             myfile=./$tmp_dir/run.sh
-                            cp ./template.sh $myfile
+                            cp -f ./template.sh $myfile
 
                             sed -i "s/NODETYPE/$node_type/g" $myfile
                             sed -i "s/CORECNT/$core_cnt/g" $myfile

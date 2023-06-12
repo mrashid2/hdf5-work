@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #SBATCH -N NNODE
 #SBATCH -n EXCLSVPROC
-#SBATCH -q regular
+#SBATCH -q debug
 #SBATCH -A m2621
 #SBATCH -t 00:05:00
 #SBATCH -C NODETYPE
@@ -105,7 +105,7 @@ ior(){
                 multiplier_cnt=$(( $naggr/$stripe_count ))
             fi
 
-            export MPICH_MPIIO_HINTS="*:cb_nodes=$naggr:cb_buffer_size=BUFSIZE:cray_cb_nodes_multiplier=$multiplier_cnt:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:AGGRCNT"
+            export MPICH_MPIIO_HINTS="*:striping_factor=32:striping_unit=33554432:cray_cb_nodes_multiplier=4:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:16"
             echo $MPICH_MPIIO_HINTS
 
             #flush data in data transfer, before file close
@@ -127,7 +127,7 @@ ior(){
                 multiplier_cnt=$(( $naggr/$stripe_count ))
             fi
 
-            export MPICH_MPIIO_HINTS="*:cb_nodes=$naggr:cb_buffer_size=BUFSIZE:cray_cb_nodes_multiplier=$multiplier_cnt:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:AGGRCNT"
+            export MPICH_MPIIO_HINTS="*:striping_factor=32:striping_unit=33554432:cray_cb_nodes_multiplier=4:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:16"
             echo $MPICH_MPIIO_HINTS
 
             NPROC=$((NNODE*CORECNT))
