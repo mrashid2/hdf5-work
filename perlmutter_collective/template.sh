@@ -43,14 +43,14 @@ export DXT_ENABLE_IO_TRACE=4
 #print romio hints
 export ROMIO_PRINT_HINTS=1
 
-export LLOGDIR="$SDIR/node/NODETYPE_NNODE/core_CORECNT/io_burst_IOBURST/stripe_STRIPETYPE/buf_size_BUFSIZE/aggr_AGGRCNT/itrn_ITRNCNT/$SLURM_JOBID"
-export SLOGDIR="$SDIR/node/NODETYPE_NNODE/core_CORECNT/io_burst_IOBURST/stripe_STRIPETYPE/buf_size_BUFSIZE/aggr_AGGRCNT/itrn_ITRNCNT/$SLURM_JOBID/lustre_stats"
+export LLOGDIR="$SDIR/node/NODETYPE_NNODE/core_CORECNT/io_burst_IOBURST/stripe_cnt_STRIPECNT/stripe_size_STRIPESIZE/mult_cnt_MULTCNT/aggr_AGGRCNT/itrn_ITRNCNT/$SLURM_JOBID"
+export SLOGDIR="$SDIR/node/NODETYPE_NNODE/core_CORECNT/io_burst_IOBURST/stripe_cnt_STRIPECNT/stripe_size_STRIPESIZE/mult_cnt_MULTCNT/aggr_AGGRCNT/itrn_ITRNCNT/$SLURM_JOBID/lustre_stats"
 export LOCALDIR="/dev/shm/$SLURM_JOBID"
 mkdir -p "$LLOGDIR"
 mkdir -p "$SLOGDIR"
 
 run_cmd="srun -N NNODE -n NNODE --ntasks-per-node 1 --exclusive"
-excn_marker="NODETYPE_node_NNODE_ncore_CORECNT_ioburst_IOBURST_stripe_STRIPETYPE_bufsize_BUFSIZE_aggr_AGGRCNT_itrn_ITRNCNT"
+excn_marker="NODETYPE_node_NNODE_ncore_CORECNT_ioburst_IOBURST_stripe_cnt_STRIPECNT_stripe_size_STRIPESIZE_mult_cnt_MULTCNT_aggr_AGGRCNT_itrn_ITRNCNT"
 
 # Define a timestamp function
 timestamp() {
@@ -78,16 +78,16 @@ ior(){
         large="-c 64 -S 1m $DDIR"
         Lustre_Default=$default
 
-        if [ STRIPETYPE = "small" ]; then
-            Lustre_Default=$small
-            stripe_count=8
-        elif [ STRIPETYPE = "medium" ]; then
-            Lustre_Default=$medium
-            stripe_count=24
-        elif [ STRIPETYPE = "large" ]; then
-            Lustre_Default=$large
-            stripe_count=64
-        fi
+        # if [ STRIPETYPE = "small" ]; then
+        #     Lustre_Default=$small
+        #     stripe_count=8
+        # elif [ STRIPETYPE = "medium" ]; then
+        #     Lustre_Default=$medium
+        #     stripe_count=24
+        # elif [ STRIPETYPE = "large" ]; then
+        #     Lustre_Default=$large
+        #     stripe_count=64
+        # fi
 
         lfs setstripe $Lustre_Default
         echo "lustre default, "$excn_marker", $Lustre_Default"
@@ -99,19 +99,15 @@ ior(){
 
     ior_write(){
         col_write(){
-            naggr=$((NNODE*AGGRCNT))
-            multiplier_cnt=1
-            if [[ $naggr -gt $stripe_count ]]; then
-                multiplier_cnt=$(( $naggr/$stripe_count ))
-            fi
-
-            export MPICH_MPIIO_HINTS="*:striping_factor=32:striping_unit=33554432:cray_cb_nodes_multiplier=4:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:16"
+            export MPICH_MPIIO_HINTS="*:striping_factor=STRIPECNT:striping_unit=STRIPESIZE:cray_cb_nodes_multiplier=MULTCNT:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:AGGRCNT"
             echo $MPICH_MPIIO_HINTS
 
             #flush data in data transfer, before file close
             NPROC=$((NNODE*CORECNT))
             export LD_PRELOAD=/global/common/software/nersc/pm-2022q3/sw/darshan/3.4.0-hdf5/lib/libdarshan.so
-            srun -N NNODE -n $NPROC --exclusive $EXEC -b IOBURST -t IOBURST -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -e -w -o $DDIR/col_"$excn_marker"_f&>>$rdir/col_"$excn_marker"_f
+            echo "Started IOR Write Execution"
+            timestamp
+            srun -N NNODE -n $NPROC --exclusive $EXEC -b IOBURST -t 4096k -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -e -w -o $DDIR/col_"$excn_marker"_f&>>$rdir/col_"$excn_marker"_f
             export LD_PRELOAD=""
             lfs getstripe $DDIR/col_"$excn_marker"_f
         }
@@ -121,19 +117,16 @@ ior(){
 
     ior_read(){
         col_read(){
-	        naggr=$((NNODE*AGGRCNT))
-            multiplier_cnt=1
-            if [[ $naggr -gt $stripe_count ]]; then
-                multiplier_cnt=$(( $naggr/$stripe_count ))
-            fi
-
-            export MPICH_MPIIO_HINTS="*:striping_factor=32:striping_unit=33554432:cray_cb_nodes_multiplier=4:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:16"
+            export MPICH_MPIIO_HINTS="*:striping_factor=STRIPECNT:striping_unit=STRIPESIZE:cray_cb_nodes_multiplier=MULTCNT:cray_cb_write_lock_mode=2:romio_cb_write=enable:romio_cb_read=enable:cb_config_list=#*:AGGRCNT"
             echo $MPICH_MPIIO_HINTS
 
             NPROC=$((NNODE*CORECNT))
             export LD_PRELOAD=/global/common/software/nersc/pm-2022q3/sw/darshan/3.4.0-hdf5/lib/libdarshan.so
-            srun -N NNODE -n $NPROC --exclusive $EXEC -b IOBURST -t IOBURST -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -r -o $DDIR/col_"$excn_marker"_f&>>$rdir/col_"$excn_marker"_r
+            echo "Started IOR Read Execution"
+            timestamp
+            srun -N NNODE -n $NPROC --exclusive $EXEC -b IOBURST -t 4096k -i 1 -v -v -v -k -a HDF5 --hdf5.setAlignment=$align -c -r -o $DDIR/col_"$excn_marker"_f&>>$rdir/col_"$excn_marker"_r
             export LD_PRELOAD=""
+            lfs getstripe $DDIR/col_"$excn_marker"_f
         }
 
         col_read
@@ -151,8 +144,8 @@ ior(){
 
     for loop_cnt in $(seq 1 1 $loop_needed); do
         ior_write
-        ior_read
-        echo "loop $loop_cnt ior_write+ior_read done!"
+        # ior_read
+        echo "loop $loop_cnt ior_write done!"
     done
 
     rm -rf $DDIR
