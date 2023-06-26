@@ -659,7 +659,11 @@ class Client_Snapshot:
 
     def write_params_list_to_csv(self, result_folder_path, wld_name, params_list):
         script_dir = os.path.abspath(os.path.dirname(__file__))
-        osc_csv_filename = os.path.join(script_dir, result_folder_path, wld_name + "_" + hostname + "_client_stats_sheet.csv")
+        target_directory = os.path.join(script_dir, result_folder_path, 'lustre_client_stats')
+        if not os.path.exists(target_directory):
+            os.makedirs(target_directory)
+
+        osc_csv_filename = os.path.join(target_directory, wld_name + "_" + hostname + "_client_stats_sheet.csv")
 
         with open(osc_csv_filename, "a") as csv_file:
             writer = csv.writer(csv_file)
@@ -667,7 +671,11 @@ class Client_Snapshot:
 
     def write_params_list_to_csv_per_osc(self, result_folder_path, wld_name, params_list, osc_name):
         script_dir = os.path.abspath(os.path.dirname(__file__))
-        osc_csv_filename = os.path.join(script_dir, result_folder_path, wld_name + "_" + hostname + "_" + osc_name + "_osc_stats_sheet.csv")
+        target_directory = os.path.join(script_dir, result_folder_path, 'lustre_osc_stats')
+        if not os.path.exists(target_directory):
+            os.makedirs(target_directory)
+
+        osc_csv_filename = os.path.join(target_directory, wld_name + "_" + hostname + "_" + osc_name + "_osc_stats_sheet.csv")
 
         with open(osc_csv_filename, "a") as csv_file:
             writer = csv.writer(csv_file)
@@ -715,7 +723,6 @@ if __name__ == "__main__":
     stat_destination_directory = sys.argv[3]
 
     cur_snap = Client_Snapshot()
-    # print(cur_snap.osc_names)
     prev_snap = Client_Snapshot()
     prev_snap.populate_snapshot()
 
@@ -734,4 +741,4 @@ if __name__ == "__main__":
         prev_snap = copy.deepcopy(cur_snap)
         print('[', hostname, ']Processing Time (Before Sleeping): ', int((time.time() - end_time) * 1000), ' miliseconds')
 
-        time.sleep(snap_record_duration)
+        time.sleep(snap_record_duration - (time.time() - end_time))
