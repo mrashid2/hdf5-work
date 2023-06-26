@@ -25,7 +25,7 @@ def execute_shell_command(command):
     return_code = process.returncode
     return stdout.decode('utf-8'), stderr.decode('utf-8'), return_code
 
-def construct_shell_command(file_dict):
+def parse_dxt_logs(file_dict):
     for key, file_list in file_dict.items():
         command = f"mkdir -p {key}_darshan_logs"
         stdout, stderr, return_code = execute_shell_command(command)
@@ -55,7 +55,7 @@ def transfer_darshan_logs(root_path, darshan_logs_path):
                                         stdout, stderr, return_code = execute_shell_command(command)
 
 if __name__ == "__main__":
-    construct_shell_command(process_files(os.getcwd()))
+    parse_dxt_logs(process_files(os.getcwd()))
 
     # root_path = "/Users/mrashid2/DirLab/perlmutter_test_data/expr_subset_8_tests/node/"
     # darshan_logs_path = "/Users/mrashid2/DirLab/perlmutter_test_data/expr_subset_8_tests/jun_5_40_executions/"
